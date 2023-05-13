@@ -1,0 +1,186 @@
+---
+title: "Midterm-STAT506"
+author: "Gideon Popoola"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+## Part A
+```{r setup, include=FALSE}
+library(ggplot2)
+library(nlme)
+library(readr)
+library(dplyr)
+library(tidyverse)
+```
+
+
+
+```{r}
+dat <- read_csv("C:/Users/olasu/Downloads/DeHartSimplified.csv", show_col_types = F)
+
+dat$gender <- factor(dat$gender, levels = c(1, 2), labels = c("Male", "Female"))
+dat$dayweek <- factor(dat$dayweek, levels = 1:7, labels = c('Mon','Tues','Wed','Thurs','Fri', 'Sat','Sun'))
+dat <- dat %>% rename(sex = gender, drinks = numall) 
+na_ids <- dat %>% filter(is.na(state) | is.na(desired) | is.na(drinks)) %>% select(id) %>% pull()
+
+dehart <- dat %>% filter(!id %in% na_ids)
+
+
+```
+
+## Question A
+
+
+
+```{r pressure, echo=FALSE}
+ggplot(dehart, aes(x = dayweek, y = drinks)) +
+geom_bar(stat = "identity") + theme_bw() +
+ggtitle('Plots of distribution of drinks by dayweek ') +
+ylab('Drinks consumed') +
+xlab('Days of the week') +theme_bw()
+
+```
+
+##Question B
+
+```{r}
+library(dplyr)
+reduced_dehart <- dehart %>% filter(dayweek %in% c("Mon","Sat"))
+model31 = glm(drinks ~ dayweek, family = "poisson", data = reduced_dehart)
+summary(model31)
+
+
+```
+
+## Question C
+```{r}
+mon <- reduced_dehart %>% filter(dayweek == 'Mon')
+data_fig <- mon %>% ggplot(aes(x = drinks)) +
+geom_bar(aes(y = (..count..)/sum(..count..))) + theme_bw() +
+ggtitle('Distribution of number of drinks') + ylab('Probability') + ylim(0,.4)
+data_fig
+
+lambda = mean(mon$drinks)
+lambda
+
+n <- length(mon$drinks)
+sumMonday <- sum(mon$drinks)
+sumSquare <- sum(mon$drinks^2)
+p <- (n * sumMonday) / (n * sumSquare - sumMonday^2)
+
+r <- (p*sumMonday)/(n*(1-p))
+
+
+r <- round(r) #round r to 1
+x <- mon$drinks
+negativeBinomial <- dnbinom(x, r, p)
+Poisson1 <- dpois(x, lambda)
+dataPmf <- data.frame(x = x, y1 = negativeBinomial , y2 = Poisson1 )
+
+
+ggplot(dataPmf, aes(x = x, y = y1)) +
+geom_bar(stat = "identity") + theme_bw() +
+ggtitle('Plots of Negative Binomial PMF ') +
+ylab('Drinks consumed') +
+xlab('Negative Binomial') +theme_bw()
+
+
+ggplot(dataPmf, aes(x = x, y = y2)) +
+geom_bar(stat = "identity") + theme_bw() +
+ggtitle('Poisson PMF ') +
+ylab('Drinks consumed') +
+xlab('Poisson Genereated') +theme_bw()
+
+
+```
+
+
+
+## PART 2 
+I will be working on hypothesis one.
+
+## EDA
+```{r}
+library(GGally)
+
+ggpairs(select(dehart, -1, -2, -3, -9))+ggtitle(" Predictors against reponse including correlation")
+ggplot(dehart, aes(x = nrel, y = drinks, group = id))+geom_point()+theme_bw()+xlab("Negative relationship")+ylab("Drinks")+ggtitle("plots of Drinks against negative relationship")
+
+ggplot(dehart, aes(x = rosn, y = drinks, group = id))+geom_point()+theme_bw()+xlab("Rosenberg trait self-esteem")+ylab("Drinks")+ggtitle("plots of Drinks against Rosn")
+
+```
+
+
+## The models for hypothesis one
+
+```{r, warning=FALSE, message=FALSE}
+## The simulated model with thier respected AIC and BIC score
+library(MASS)
+library(nlme)
+library(lme4)
+modelP1 = glm(drinks ~ nrel, family = "poisson", data = dehart)
+modelN1 = glm.nb(drinks~nrel, data = dehart)
+
+modelN2 = glm.nb(drinks ~ nrel+rosn,  data = dehart)
+modelP2 = glm(drinks ~ desired+nrel+rosn, family = "poisson" ,data = dehart)
+
+#The selected model for this study is denoted as ModelN3
+modelN3 = glm.nb(drinks ~ nrel+rosn+nrel*rosn, data=dehart)
+modelP3 = glm(drinks ~ nrel+rosn+nrel*rosn, family = "poisson" ,data = dehart)
+
+
+summary(modelP3)
+summary(modelN3)
+AIC(modelN1,   modelN2, modelN3 )
+AIC(modelP1, modelP2, modelP3)
+
+
+BIC(modelN1,   modelN2, modelN3 )
+BIC(modelP1, modelP2, modelP3)
+
+
+```
+
+
+```{r}
+## Plotting the model disgnostics plots
+plot(modelP3)
+pearson_resid <- residuals(modelP3, type = "pearson")
+plot(fitted(modelP3), pearson_resid,
+     xlab = "Fitted values", ylab = "Pearson residuals",
+     main = "Pearson residuals plot")
+abline(h = 0, col = "red")
+
+```
+```{r}
+
+
+f = fitted(modelP3)^(-1)
+pearson = residuals(modelP3, type="pearson")
+stdpearson = sqrt(abs(scale(pearson)))
+stdpearson[1] = 1.1
+plot(f, stdpearson, main="Scale-Location", xlab="Predicted values", ylab=expression(sqrt("|Std. Pearson resid|")))
+ss5 = smooth.spline(f, stdpearson, df=5)
+lines(ss5, lty=2, col="red")
+
+
+```
+
+## Making predictions
+
+```{r}
+prediction10 <- exp(predict(modelN3, newdata = data.frame(nrel = c(1,3,5,7), rosn = c(4,3,2,1))))
+prediction20 <- exp(predict(modelN3, newdata = data.frame(nrel = c(1,3,5,7), rosn = c(2,2,2,2))))
+prediction30 <- exp(predict(modelN3, newdata = data.frame(nrel = c(1,3,5,7), rosn = c(9,9,9,9))))
+prediction10
+prediction20
+prediction30
+```
+
+## Appendix
+```{r ref.label=knitr::all_labels(), echo = T, eval = F}
+
+```
